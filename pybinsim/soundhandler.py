@@ -94,6 +94,9 @@ class SoundHandler(object):
         self.buffer_add_sound()
         return buffer_content
 
+    def read_zeros(self):
+        return np.zeros([self.active_channels, self.chunk_size])
+
     def _run_file_reader(self):
         file_read_thread = threading.Thread(target=self.read_sound_file)
         file_read_thread.daemon = True
@@ -103,7 +106,7 @@ class SoundHandler(object):
 
         while True:
             if self.new_sound_file_request:
-                self.log.info('Loading new sound file')
+                #self.log.info('Loading new sound file')
                 audio_file_data, fs = sf.read(self.soundPath, dtype='float32', )
                 assert fs == self.fs
 
