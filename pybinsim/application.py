@@ -171,9 +171,9 @@ class BinSim(object):
         self.nInChannels4bin = {i: self.config.get('mapping_in2out').count(i) for i in self.config.get('mapping_in2out')}.get('bin')
         self.nInChannels4trans = self.nInChannels - self.nInChannels4bin
         # Indices of Input Channels that shall be used for Binaural synthesis
-        self.InChannels4bin = np.array([i for i, value in enumerate(self.config.get('mapping_in2out')) if value == 'bin']) - 1
+        self.InChannels4bin = np.array([i for i, value in enumerate(self.config.get('mapping_in2out')) if value == 'bin'])
         # Indices of Input Channels that shall be used for acoustic transparency
-        self.InChannels4trans = np.array([i for i, value in enumerate(self.config.get('mapping_in2out')) if value != 'bin']) - 1
+        self.InChannels4trans = np.array([i for i, value in enumerate(self.config.get('mapping_in2out')) if value != 'bin'])
 
         # Indices of Output Channels used for binaural synthesis
         self.OutChannels4bin = np.array(self.config.get('outChannels')[:2]) - 1
@@ -188,6 +188,17 @@ class BinSim(object):
         self.result_trans = None
         self.block = None
         self.stream = None
+
+        # ToDo: irgendwas stimmt mit dem Oututstream nicht. Vielleicht stimmt nicht der Standardausgang oder ähnliches.
+        #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+        default_input = sd.query_devices(kind='input')
+        default_output = sd.query_devices(kind='output')
+        max_in_channels = default_input["max_input_channels"]
+        max_out_channels = default_output["max_output_channels"]
+
+        print(f"max_in_channels: {max_in_channels}")
+        print(f"max_out_channels: {max_out_channels}")
+        #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
         # self.convolverWorkers = []
         self.convolverHP, self.ds_convolver, self.early_convolver, self.late_convolver, self.input_Buffer, \
@@ -361,7 +372,8 @@ def audio_callback(binsim):
             binsim.block[:amount_channels, :] = binsim.soundHandler.buffer_read()
 
         if binsim.current_config.get('pauseConvolution'):
-            binsim.result_trans = binsim.block[binsim.InChannels4trans, :]
+            if binsim.nInChannels4trans > 0:
+                binsim.result_trans = binsim.block[binsim.InChannels4trans, :]
 
             mix = np.mean(binsim.block[binsim.InChannels4bin, :], 0)
             binsim.result_bin[0, :] = mix
@@ -401,7 +413,8 @@ def audio_callback(binsim):
             binsim.result_bin[0, :] = torch.sum(torch.stack([left_ds, left_early, left_late]), keepdim=True, dim=0)
             binsim.result_bin[1, :] = torch.sum(torch.stack([right_ds, right_early, right_late]), keepdim=True, dim=0)
 
-            binsim.result_trans = binsim.block[binsim.InChannels4trans, :]
+            if binsim.nInChannels4trans > 0:
+                binsim.result_trans = binsim.block[binsim.InChannels4trans, :]
 
             # Finally apply Headphone Filter
             if callback.config.get('useHeadphoneFilter'):
@@ -411,13 +424,13 @@ def audio_callback(binsim):
         # Scale data
         # binsim.result = np.divide(binsim.result, float((amount_channels) * 2))
         binsim.result_bin = torch.multiply(binsim.result_bin, callback.config.get('loudnessFactor') / float((binsim.nInChannels)))
-        binsim.result_trans *= callback.config.get('loudnessFactor')
-        binsim.result_trans /= float(binsim.nInChannels)
+        if binsim.nInChannels4trans > 0:
+            binsim.result_trans *= callback.config.get('loudnessFactor')
+            binsim.result_trans /= float(binsim.nInChannels)
 
-        outdata[binsim.OutChannels4bin, :] = np.transpose(binsim.result_bin.detach().cpu().numpy())
-        outdata[binsim.OutChannels4trans, :] = binsim.result_trans
-
-        print(outdata.shape)
+        outdata[:, binsim.OutChannels4bin] = np.transpose(binsim.result_bin.detach().cpu().numpy())
+        if binsim.nInChannels4trans > 0:
+            outdata[:, binsim.OutChannels4trans] = binsim.result_trans
 
         # Report buffer underrun - Still working with sounddevice package?
         if status == 4:
