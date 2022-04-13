@@ -28,6 +28,7 @@ from pythonosc import dispatcher
 from pythonosc import osc_server
 
 
+# noinspection PyTypeChecker
 class OscReceiver(object):
     """
     Class for receiving OSC Messages to control pyBinSim

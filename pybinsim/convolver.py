@@ -30,7 +30,7 @@ import torch
 class ConvolverTorch(object):
     """
     Class for convolving mono (usually for virtual sources) or stereo input (usually for HP compensation)
-    with a BRIRsor HRTF
+    with a BRIRs or HRTF
     """
 
     def __init__(self, ir_size, block_size, headphoneEQ, sources, interpolate, torch_settings):
@@ -91,7 +91,6 @@ class ConvolverTorch(object):
         self.outputLeft_previous = torch.zeros(1, self.block_size, dtype=torch.float32, device=self.torch_device)
         self.outputRight_previous = torch.zeros(1, self.block_size, dtype=torch.float32, device=self.torch_device)
 
-
         # Counts how often process() is called
         self.processCounter = 0
 
@@ -143,12 +142,11 @@ class ConvolverTorch(object):
         self.outputLeft = self.outputEmpty
         self.outputRight = self.outputEmpty
 
-
     def process(self, input_buffer):
         """
         Main function
 
-        :param block:
+        :param input_buffer:
         :return: (outputLeft, outputRight)
         """
 
