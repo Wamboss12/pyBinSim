@@ -129,12 +129,20 @@ class BinSimConfig(object):
                                                                                                           f" must be identical! \n" \
                                                                                                           f"mappings: {self.configurationDict['mapping_in2out']}\n" \
                                                                                                           f"num inChannels: {self.configurationDict['max_inChannels']}"
+
         assert len(self.configurationDict["outChannels"]) >= 1, f"Number of outChannels must be at least 1\n" \
                                                                 f"outChannels: {self.configurationDict['outChannels']}"
         assert all([mapping in self.configurationDict["outChannels"] or mapping == "bin" for mapping in
+
                     self.configurationDict["mapping_in2out"]]) is True, f"Something is wrong with the mappings!\n" \
                                                                         f"mappings: {self.configurationDict['mapping_in2out']}\n" \
                                                                         f"outchannels: {self.configurationDict['outChannels']}"
+
+        mappings_for_trans = [i for i in self.configurationDict.get("mapping_in2out")]
+        assert len(mappings_for_trans) == len(set(mappings_for_trans)), f"You can only assert 1 inChannel to 1 outChannel" \
+                                                                        f"for acoustic transparency!\n" \
+                                                                        f"mappings: {self.configurationDict['mapping_in2out']}"
+
         if "bin" in self.configurationDict["mapping_in2out"]:
             assert len(self.configurationDict["outChannels"]) > 1, f"There must be at least two outChannel for binaural" \
                                                                   f"synthesis! (first two in 'outChannels')\n" \
@@ -188,12 +196,14 @@ class BinSim(object):
             self.OutChannels4bin = np.array(self.config.get('outChannels')[:2]) - 1
             # Indices of Output Channels used for acoustic transparency
             self.OutChannels4trans = np.array(self.config.get('outChannels')[2:]) - 1
+            self.nOutChannels4trans = len(self.config.get('outChannels')) - 2
         else:
             # Indices of Output Channels used for binaural synthesis
             self.OutChannels4bin = np.array([])
             # Indices of Output Channels used for acoustic transparency
             self.OutChannels4trans = np.array(self.config.get('outChannels')) - 1
-        self.nOutChannels4trans = len(self.config.get('outChannels'))
+            self.nOutChannels4trans = len(self.config.get('outChannels'))
+
         self.maxOutChannel = max(self.config.get('outChannels'))
         self.sampleRate = self.config.get('samplingRate')
         self.blockSize = self.config.get('blockSize')
@@ -207,17 +217,6 @@ class BinSim(object):
         self.result_trans = None
         self.block = None
         self.stream = None
-
-        # ToDo: irgendwas stimmt mit dem Oututstream nicht. Vielleicht stimmt nicht der Standardausgang oder ähnliches.
-        #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
-        default_input = sd.query_devices(kind='input')
-        default_output = sd.query_devices(kind='output')
-        max_in_channels = default_input["max_input_channels"]
-        max_out_channels = default_output["max_output_channels"]
-
-        print(f"max_in_channels: {max_in_channels}")
-        print(f"max_out_channels: {max_out_channels}")
-        #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
 
         # self.convolverWorkers = []
         self.convolverHP, self.ds_convolver, self.early_convolver, self.late_convolver, self.input_Buffer, \
@@ -398,14 +397,14 @@ def audio_callback(binsim):
                 binsim.result_bin[0, :] = mix
                 binsim.result_bin[1, :] = mix
 
-        # toDo: anpassen
         else:
 
             if binsim.nInChannels4bin > 0:
                 input_buffers = binsim.input_Buffer.process(binsim.block[binsim.InChannels4bin, :])
 
                 # Update Filters and run each convolver with the current block
-                for n in range(amount_channels):
+                # toDo: this propably wont work, have to test
+                for n in range(binsim.nInChannels4bin):
 
                     # Get new Filter
                     if binsim.oscReceiver.is_ds_filter_update_necessary(n):
