@@ -208,6 +208,17 @@ class BinSim(object):
         self.block = None
         self.stream = None
 
+        # ToDo: irgendwas stimmt mit dem Oututstream nicht. Vielleicht stimmt nicht der Standardausgang oder ähnliches.
+        #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+        default_input = sd.query_devices(kind='input')
+        default_output = sd.query_devices(kind='output')
+        max_in_channels = default_input["max_input_channels"]
+        max_out_channels = default_output["max_output_channels"]
+
+        print(f"max_in_channels: {max_in_channels}")
+        print(f"max_out_channels: {max_out_channels}")
+        #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#
+
         # self.convolverWorkers = []
         self.convolverHP, self.ds_convolver, self.early_convolver, self.late_convolver, self.input_Buffer, \
         self.input_BufferHP, self.filterStorage, self.oscReceiver, self.soundHandler = self.initialize_pybinsim()
