@@ -61,10 +61,10 @@ class BinSimConfig(object):
 
         # Default Configuration
         self.configurationDict = {'soundfile': '',
-                                  'outChannels': [1, 2],  # new - Output-Channels - first two for binaural
-                                  'max_inChannels': 8,  # new
-                                  'mapping_in2out': ['bin', 'bin', 'bin', 'bin', 'bin', 'bin', 'bin', 'bin'],
-                                  'device': sd.default.device[1],
+                                  'outChannels': [1, 2],
+                                  'max_inChannels': 8,
+                                  'mapping_in2out': ['bin','bin','bin','bin','bin','bin','bin','bin'],
+                                  'device': list(sd.default.device),
                                   'blockSize': 256,
                                   'ds_filterSize': 512,
                                   'early_filterSize': 4096,
@@ -208,10 +208,24 @@ class BinSim(object):
         self.sampleRate = self.config.get('samplingRate')
         self.blockSize = self.config.get('blockSize')
 
-        # Check if the Device has In- and OutChannels, and the enough OutChannels
-        sd.check_output_settings(device=self.config.get("device"), channels=self.maxOutChannel)
-        sd.check_input_settings(device=self.config.get("device"))
-        sd.default.device = (self.config.get("device"), self.config.get("device"))
+        try:
+            # Check if the Device has In- and OutChannels, and the enough OutChannels
+            sd.check_output_settings(device=self.config.get("device")[1], channels=self.maxOutChannel)
+            sd.check_input_settings(device=self.config.get("device")[0])
+            sd.default.device = (self.config.get("device"), self.config.get("device"))
+        except sd.PortAudioError:
+            self.log.warning("Chosen Device i")
+            # Check if the Device has In- and OutChannels, and the enough OutChannels
+            sd_list = sd.query_devices()
+            sd_num = None
+            for num, i in enumerate(sd_list):
+                if i.get("name") == 'MOTU Pro Audio' and i.get('max_input_channels') == 8 and i.get('max_output_channels') == 8:
+                    sd_num = num
+            assert sd_num is not None, "Could not query MOTU Pro Audio as device with ASIO as Host-API"
+            sd.check_output_settings(device=sd_num, channels=self.maxOutChannel)
+            sd.check_input_settings(device=sd_num)
+            sd.default.device = (sd_num, sd_num)
+            sd.default.samplerate = self.config.get("samplingRate")
 
         self.result_bin = None
         self.result_trans = None
@@ -377,8 +391,8 @@ def audio_callback(binsim):
         amount_channels = binsim.soundHandler.get_sound_channels()
 
         # check if num of sound channels == stated nChannelsIn
-        if amount_channels != binsim.nInChannels:
-            binsim.log.warn(f'Number of stated nChannelsIn is wrong! stated: {binsim.nInChannels}, real: {amount_channels}')
+        #if amount_channels < binsim.nInChannels:
+        #    binsim.log.warn(f'Number of stated nChannelsIn is wrong! stated: {binsim.nInChannels}, real: {amount_channels}')
 
         if amount_channels == 0:
             return
