@@ -70,7 +70,6 @@ class OscReceiver(object):
         self.soundFileNew = False
 
         osc_dispatcher_ds = dispatcher.Dispatcher()
-
         osc_dispatcher_ds.map("/pyBinSim_ds_Filter", self.handle_ds_filter_input)
         osc_dispatcher_ds.map("/pyBinSim_ds_Filter_Short", self.handle_ds_filter_input)
         osc_dispatcher_ds.map("/pyBinSim_ds_Filter_Orientation", self.handle_ds_filter_input)

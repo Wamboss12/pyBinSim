@@ -1,12 +1,14 @@
-import soundfile as sf
 import numpy as np
 import logging
 import ast
 import scipy.io
+import soundfile as sf
 
-path_to_mat = "example/brirs/BRIRs_ListeningLab_2m_LS-Front/brirs125.mat"
-path_to_mat_2 = "example/brirs/example_mat.mat"
-tracking_data = scipy.io.loadmat(path_to_mat)
-tracking_data_2 = scipy.io.loadmat(path_to_mat_2)
 
-print()
+scipy.io.loadmat()
+
+audio = "example/brirs/BRIR_Front_Audiolab/125/brir0.wav"
+#audio = "example/brirs/BRIR_Front_Seminarroom/125/brir0.wav"
+data, samplerate = sf.read(audio)
+
+print(data.shape, samplerate)
