@@ -3,12 +3,15 @@ import logging
 import ast
 import scipy.io
 import soundfile as sf
+import msvcrt
 
+a = [1, 2]
+b = [3, 4]
+c = a + b
+print(c)
 
-scipy.io.loadmat()
-
-audio = "example/brirs/BRIR_Front_Audiolab/125/brir0.wav"
-#audio = "example/brirs/BRIR_Front_Seminarroom/125/brir0.wav"
-data, samplerate = sf.read(audio)
-
-print(data.shape, samplerate)
+while True:
+    if msvcrt.kbhit():
+        # char = msvcrt.getch()
+        key = ord(msvcrt.getch())
+        print(key)

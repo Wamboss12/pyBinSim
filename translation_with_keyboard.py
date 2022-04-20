@@ -32,7 +32,13 @@ from pybinsim.spark_fun import Spark9dof
 
 def start_tracker():
     # Default values
-    oscIdentifier = '/pyBinSim'
+    oscIdentifier_ds = '/pyBinSim_ds_Filter'
+    oscIdentifier_early = '/pyBinSim_early_Filter'
+    oscIdentifier_late = '/pyBinSim_late_Filter'
+    oscIdentifier_loudness = '/pyBinSimLoudness'
+    oscIdentifier_convolution = '/pyBinSimPauseConvolution'
+    oscIdentifier_playback = '/pyBinSimPauseAudioPlayback'
+
     ip = '127.0.0.1'
     port_ds = 10000
     port_early = 10001
@@ -44,12 +50,12 @@ def start_tracker():
     baudRate = 57600
 
     nSources = 1
-    minAngleDifference = 2
+    minAngleDifference = 4
     minxDifference = 25
 
     # Internal settings:
     yawVectorSubSampled = range(0, 360, minAngleDifference)
-    xVectorSubSampled = range(125, 326, minxDifference)
+    xVectorSubSampled = range(0, 201, minxDifference)
 
     print(['IP: ', ip])
     print(['Using Ports ', port_ds, port_early, port_late, port_misc])
@@ -61,8 +67,8 @@ def start_tracker():
     client_misc = udp_client.SimpleUDPClient(ip, port_misc)
 
     yaw = 0
-    current_x = 125
-    loudness = 1
+    current_x = 0
+    loudness = 0.1
     pauseConvolution = False
     pausePlayback = False
 
@@ -80,11 +86,11 @@ def start_tracker():
 
             "Space"
             if key == 32:
-                yaw, current_x = 0, 125
+                yaw, current_x = 0, 0
 
             # Key 'Up arrow' moves forward to the source, next point nearer to the front source
             if key == 72:
-                if current_x < 325:
+                if current_x < 200:
                     current_x += 25
             # Key 'Down arrow' moves
             if key == 80:
@@ -102,26 +108,27 @@ def start_tracker():
                     yaw += 360
             # key "+" on numpad for increasing volume
             if key == 43:
-                if loudness < 3:
-                    loudness += 0.5
-                    client_misc.send_message(oscIdentifier, ["/pyBinSimLoudness", loudness])
+                if loudness < 1:
+                    loudness += 0.1
+                    client_misc.send_message(oscIdentifier_loudness, [loudness])
             # key "-" on numpad for increasing volume
             if key == 45:
-                if loudness > 0.5:
-                    loudness -= 0.5
-                    client_misc.send_message(oscIdentifier, ["/pyBinSimLoudness", loudness])
+                if loudness > 0.1:
+                    loudness -= 0.1
+                    client_misc.send_message(oscIdentifier_loudness, [loudness])
             # key "c" for pausing the convolution
             if key == 99:
                 pauseConvolution = not pauseConvolution
-                client_misc.send_message(oscIdentifier, ["/pyBinSimPauseConvolution", str(pauseConvolution)])
+                client_misc.send_message(oscIdentifier_convolution, [str(pauseConvolution)])
             # key "p" for pausing the convolution
             if key == 112:
                 pausePlayback = not pausePlayback
-                client_misc.send_message(oscIdentifier, ["/pyBinSimPauseAudioPlayback", str(pauseConvolution)])
+                client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
 
         yaw = min(yawVectorSubSampled, key=lambda x: abs(x - yaw))
         current_x = min(xVectorSubSampled, key=lambda x: abs(x-current_x))
-        print(['Yaw: ', round(yaw), '  x: ', current_x])
+        print(['Yaw: ', round(yaw), '  x: ', current_x, 'loudness: ', round(loudness, 1), "pause Convol: ", pauseConvolution,
+               'pause Playback: ', pausePlayback])
 
         #Value 1 - 3: listener orientation[yaw, pitch, roll]
         #Value 4 - 6: listener position[x, y, z]
@@ -130,12 +137,12 @@ def start_tracker():
         # build OSC Message and send it
         for n in range(0, nSources):
             # channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
-            binsim_ds =     ["/pyBinSim_ds_Filter", n,  int(round(yaw)), 0, 0,  current_x, 0, 0,    0, 0, 0]
-            binsim_early =  ["/pyBinSim_ds_Filter", n,  int(round(yaw)), 0, 0,  current_x, 0, 0,    0, 0, 0]
-            binsim_late =   ["/pyBinSim_ds_Filter", n,  0, 0, 0,                0, 0, 0,            0, 0, 0]
-            client_ds.send_message(oscIdentifier, binsim_ds)
-            client_early.send_message(oscIdentifier, binsim_early)
-            client_late.send_message(oscIdentifier, binsim_late)
+            binsim_ds =     [n,  int(round(yaw)), 0, 0,  current_x, 0, 0,    0, 0, 0,   0, 0, 0,  0, 0, 0]
+            binsim_early =  [n,  int(round(yaw)), 0, 0,  current_x, 0, 0,    0, 0, 0,   0, 0, 0,  0, 0, 0]
+            binsim_late =   [n,  0, 0, 0,                0, 0, 0,            0, 0, 0,   0, 0, 0,  0, 0, 0]
+            client_ds.send_message(oscIdentifier_ds, binsim_ds)
+            client_early.send_message(oscIdentifier_early, binsim_early)
+            client_late.send_message(oscIdentifier_late, binsim_late)
 
         time.sleep(0.1)
 

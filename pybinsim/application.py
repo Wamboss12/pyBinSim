@@ -61,7 +61,8 @@ class BinSimConfig(object):
 
         # Default Configuration
         self.configurationDict = {'soundfile': '',
-                                  'outChannels': [1, 2],
+                                  'outChannelsBin': [1, 2],
+                                  'outChannelsTrans': [],
                                   'max_inChannels': 8,
                                   'mapping_in2out': ['bin','bin','bin','bin','bin','bin','bin','bin'],
                                   'device': list(sd.default.device),
@@ -128,30 +129,27 @@ class BinSimConfig(object):
                                                                                                           f" inChannels and mappings from inChannels to outChannels" \
                                                                                                           f" must be identical! \n" \
                                                                                                           f"mappings: {self.configurationDict['mapping_in2out']}\n" \
-                                                                                                          f"num inChannels: {self.configurationDict['max_inChannels']}"
+                                                                                                          f"max inChannels: {self.configurationDict['max_inChannels']}\n"
 
-        assert len(self.configurationDict["outChannels"]) >= 1, f"Number of outChannels must be at least 1\n" \
-                                                                f"outChannels: {self.configurationDict['outChannels']}"
-        assert all([mapping in self.configurationDict["outChannels"] or mapping == "bin" for mapping in
+        for channel in self.configurationDict["outChannelsTrans"]:
+            assert channel not in self.configurationDict['outChannelsBin'], "Must be different Channels for transparency and binaural synthesis!\n" \
+                                                                            f"outChannelsTrans: {self.configurationDict['outChannelsTrans']}\n" \
+                                                                            f"outChannelsBin: {self.configurationDict['outChannelsBin']}\n"
+        for channel in self.configurationDict["outChannelsBin"]:
+            assert channel not in self.configurationDict['outChannelsTrans'], "Must be different Channels for transparency and binaural synthesis!\n" \
+                                                                            f"outChannelsTrans: {self.configurationDict['outChannelsTrans']}\n" \
+                                                                            f"outChannelsBin: {self.configurationDict['outChannelsBin']}\n"
 
-                    self.configurationDict["mapping_in2out"]]) is True, f"Something is wrong with the mappings!\n" \
+        assert all([mapping in self.configurationDict["outChannelsTrans"] or (mapping == "bin" and len(self.configurationDict["outChannelsBin"]) == 2) for mapping in self.configurationDict["mapping_in2out"]]) is True, \
+                                                                        f"Something is wrong with the mappings!\n" \
                                                                         f"mappings: {self.configurationDict['mapping_in2out']}\n" \
-                                                                        f"outchannels: {self.configurationDict['outChannels']}"
+                                                                        f"outChannelsTrans: {self.configurationDict['outChannelsTrans']}\n" \
+                                                                        f"outChannelsBin: {self.configurationDict['outChannelsBin']}\n"
 
-        mappings_for_trans = [i for i in self.configurationDict.get("mapping_in2out")]
+        mappings_for_trans = [i for i in self.configurationDict.get("mapping_in2out") if i != "bin"]
         assert len(mappings_for_trans) == len(set(mappings_for_trans)), f"You can only assert 1 inChannel to 1 outChannel" \
                                                                         f"for acoustic transparency!\n" \
                                                                         f"mappings: {self.configurationDict['mapping_in2out']}"
-
-        if "bin" in self.configurationDict["mapping_in2out"]:
-            assert len(self.configurationDict["outChannels"]) > 1, f"There must be at least two outChannel for binaural" \
-                                                                  f"synthesis! (first two in 'outChannels')\n" \
-                                                                  f"outChannels: {self.configurationDict['outChannels']}"
-            assert all([mapping not in self.configurationDict["outChannels"][:2] or mapping == "bin" for mapping in
-                    self.configurationDict["mapping_in2out"]]), f"You cannot map an inChannel for acoustic transparency to" \
-                                                                f"the same outChannels as for binaural synthesis (first two outChannels)!\n" \
-                                                                f"outchannels: {self.configurationDict['outChannels']}\n" \
-                                                                f"mappings: {self.configurationDict['mapping_in2out']}\n" \
 
     def get(self, setting):
         return self.configurationDict[setting]
@@ -182,29 +180,16 @@ class BinSim(object):
         self.config.read_from_file(config_file)
 
         self.nInChannels = self.config.get('max_inChannels')
-        self.nInChannels4bin = {i: self.config.get('mapping_in2out').count(i) for i in self.config.get('mapping_in2out')}.get('bin')
-        if self.nInChannels4bin is None:
-            self.nInChannels4bin = 0
-        self.nInChannels4trans = self.nInChannels - self.nInChannels4bin
         # Indices of Input Channels that shall be used for Binaural synthesis
         self.InChannels4bin = np.array([i for i, value in enumerate(self.config.get('mapping_in2out')) if value == 'bin'])
         # Indices of Input Channels that shall be used for acoustic transparency
         self.InChannels4trans = np.array([i for i, value in enumerate(self.config.get('mapping_in2out')) if value != 'bin'])
 
-        if self.nInChannels4bin > 0:
-            # Indices of Output Channels used for binaural synthesis
-            self.OutChannels4bin = np.array(self.config.get('outChannels')[:2]) - 1
-            # Indices of Output Channels used for acoustic transparency
-            self.OutChannels4trans = np.array(self.config.get('outChannels')[2:]) - 1
-            self.nOutChannels4trans = len(self.config.get('outChannels')) - 2
-        else:
-            # Indices of Output Channels used for binaural synthesis
-            self.OutChannels4bin = np.array([])
-            # Indices of Output Channels used for acoustic transparency
-            self.OutChannels4trans = np.array(self.config.get('outChannels')) - 1
-            self.nOutChannels4trans = len(self.config.get('outChannels'))
+        self.OutChannels4bin = np.array(self.config.get('outChannelsBin')) - 1
+        # Indices of Output Channels used for acoustic transparency
+        self.OutChannels4trans = np.array(self.config.get('outChannelsTrans')) - 1
 
-        self.maxOutChannel = max(self.config.get('outChannels'))
+        self.maxOutChannel = max( self.config.get('outChannelsBin') + self.config.get('outChannelsTrans') )
         self.sampleRate = self.config.get('samplingRate')
         self.blockSize = self.config.get('blockSize')
 
@@ -269,7 +254,7 @@ class BinSim(object):
         self.result_bin = torch.zeros(2, self.blockSize, dtype=torch.float32)
 
         self.result_trans = np.zeros(
-            [self.nOutChannels4trans, self.blockSize], dtype=np.float32)
+            [len(self.OutChannels4trans), self.blockSize], dtype=np.float32)
         self.block = np.zeros(
             [self.nInChannels, self.blockSize], dtype=np.float32)
 
@@ -317,19 +302,19 @@ class BinSim(object):
         soundHandler.request_new_sound_file(soundfile_list)
 
         # Create input buffers
-        input_Buffer = InputBufferMulti(self.blockSize, self.nInChannels4bin, self.config.get('torchConvolution[cpu/cuda]'))
+        input_Buffer = InputBufferMulti(self.blockSize, len(self.InChannels4bin), self.config.get('torchConvolution[cpu/cuda]'))
         input_BufferHP = InputBufferMulti(self.blockSize, 2, self.config.get('torchConvolution[cpu/cuda]'))
 
         # Create N convolvers depending on the number of wav channels
-        self.log.info('Number of Channels for Binaural Synthesis: ' + str(self.nInChannels4bin))
+        self.log.info('Number of Channels for Binaural Synthesis: ' + str(len(self.InChannels4bin)))
 
-        ds_convolver = ConvolverTorch(ds_size, self.blockSize, False, self.nInChannels4bin,
+        ds_convolver = ConvolverTorch(ds_size, self.blockSize, False, len(self.InChannels4bin),
                                       self.config.get('enableCrossfading'),
                                       self.config.get('torchConvolution[cpu/cuda]'))
-        early_convolver = ConvolverTorch(early_size, self.blockSize, False, self.nInChannels4bin,
+        early_convolver = ConvolverTorch(early_size, self.blockSize, False, len(self.InChannels4bin),
                                          self.config.get('enableCrossfading'),
                                          self.config.get('torchConvolution[cpu/cuda]'))
-        late_convolver = ConvolverTorch(late_size, self.blockSize, False, self.nInChannels4bin,
+        late_convolver = ConvolverTorch(late_size, self.blockSize, False, len(self.InChannels4bin),
                                         self.config.get('enableCrossfading'),
                                         self.config.get('torchConvolution[cpu/cuda]'))
 
@@ -404,21 +389,21 @@ def audio_callback(binsim):
             binsim.block[:amount_channels, :] = binsim.soundHandler.buffer_read()
 
         if binsim.current_config.get('pauseConvolution'):
-            if binsim.nInChannels4bin > 0:
-                binsim.result_trans = binsim.block[binsim.InChannels4trans, :]
-
+            if len(binsim.InChannels4bin) > 0:
                 mix = np.mean(binsim.block[binsim.InChannels4bin, :], 0)
-                binsim.result_bin[0, :] = mix
-                binsim.result_bin[1, :] = mix
+                binsim.result_bin[0, :] = torch.from_numpy(mix)
+                binsim.result_bin[1, :] = torch.from_numpy(mix)
+            if len(binsim.InChannels4trans) > 0:
+                binsim.result_trans = binsim.block[binsim.InChannels4trans, :]
 
         else:
 
-            if binsim.nInChannels4bin > 0:
+            if len(binsim.InChannels4bin) > 0:
                 input_buffers = binsim.input_Buffer.process(binsim.block[binsim.InChannels4bin, :])
 
                 # Update Filters and run each convolver with the current block
                 # toDo: this propably wont work, have to test
-                for n in range(binsim.nInChannels4bin):
+                for n in range(len(binsim.InChannels4bin)):
 
                     # Get new Filter
                     if binsim.oscReceiver.is_ds_filter_update_necessary(n):
@@ -451,15 +436,15 @@ def audio_callback(binsim):
                     result_buffer = binsim.input_BufferHP.process(binsim.result_bin)
                     binsim.result_bin[0, :], binsim.result_bin[1, :] = binsim.convolverHP.process(result_buffer)
 
-            if binsim.nInChannels4trans > 0:
+            if len(binsim.InChannels4trans) > 0:
                 binsim.result_trans = binsim.block[binsim.InChannels4trans, :]
 
         # Scale data
         # binsim.result = np.divide(binsim.result, float((amount_channels) * 2))
-        if binsim.nInChannels4bin > 0:
+        if len(binsim.InChannels4bin) > 0:
             binsim.result_bin = torch.multiply(binsim.result_bin, callback.config.get('loudnessFactor') / float((binsim.nInChannels)))
             outdata[:, binsim.OutChannels4bin] = np.transpose(binsim.result_bin.detach().cpu().numpy())
-        if binsim.nInChannels4trans > 0:
+        if len(binsim.InChannels4trans) > 0:
             binsim.result_trans *= callback.config.get('loudnessFactor')
             binsim.result_trans /= float(binsim.nInChannels)
             outdata[:, binsim.OutChannels4trans] = binsim.result_trans.T
