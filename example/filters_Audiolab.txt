@@ -1,3 +1,4 @@
+HP hpirs/HP_mean_filter_512_48000.wav
 DS 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 brirs/BRIR_Front_Audiolab/125/brir0.wav
 DS 4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 brirs/BRIR_Front_Audiolab/125/brir4.wav
 DS 8 0 0 0 0 0 0 0 0 0 0 0 0 0 0 brirs/BRIR_Front_Audiolab/125/brir8.wav

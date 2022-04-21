@@ -101,8 +101,11 @@ class OscReceiver(object):
         osc_dispatcher_misc.map("/pyBinSimFile", self.handle_file_input)
         osc_dispatcher_misc.map("/pyBinSimPauseAudioPlayback", self.handle_audio_pause)
         osc_dispatcher_misc.map("/pyBinSimPauseConvolution", self.handle_convolution_pause)
+        osc_dispatcher_misc.map("/pyBinSimFile", self.handle_file_input)
         osc_dispatcher_misc.map("/pyBinSim_sd_Filter", self.handle_sd_filter_input)
         osc_dispatcher_misc.map("/pyBinSimLoudness", self.handle_loudness)
+        osc_dispatcher_misc.map("/pyBinSimMapping", self.handle_mapping)
+        osc_dispatcher_misc.map("/pyBinSimHP", self.handle_HP)
 
         self.server = osc_server.ThreadingOSCUDPServer(
             (self.ip, self.port1), osc_dispatcher_ds)
@@ -279,6 +282,22 @@ class OscReceiver(object):
 
         self.currentConfig.set('loudnessFactor', value)
         self.log.info("Changing loudness")
+
+    def handle_mapping(self, identifier, new_inChannels4bin, new_inChannels4trans, new_outChannelsTrans):
+        """ Handler for mapping control"""
+        assert identifier == "/pyBinSimMapping"
+
+        self.currentConfig.set('inChannels4bin', np.array(new_inChannels4bin))
+        self.currentConfig.set('inChannels4trans', np.array(new_inChannels4trans))
+        self.currentConfig.set('outChannelsTrans', np.array(new_outChannelsTrans))
+        self.log.info("Changing mapping of sources")
+
+    def handle_HP(self, identifier, value):
+        """ Handler for HP control"""
+        assert identifier == "/pyBinSimHP"
+
+        self.currentConfig.set('useHeadphoneFilter', value)
+        self.log.info("Changing HP filter use")
 
     def start_listening(self):
         """Start osc receiver in background Thread"""

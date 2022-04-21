@@ -43,7 +43,7 @@ def matrixFromPose(pose):
 
 def rotatePose(pose):
 	# Drehwinkel
-	alpha = np.radians(90)
+	alpha = np.radians(0)
 
 	# Drehung x Achse
 	rotation_matrix = np.matrix(
@@ -102,14 +102,17 @@ def start_tracker():
 	oscIdentifier_loudness = '/pyBinSimLoudness'
 	oscIdentifier_convolution = '/pyBinSimPauseConvolution'
 	oscIdentifier_playback = '/pyBinSimPauseAudioPlayback'
+	oscIdentifier_soundfile = '/pyBinSimFile'
+	oscIdentifier_mapping = '/pyBinSimMapping'
+	oscIdentifier_headphonefilter = '/pyBinSimHP'
 
 	ip = '127.0.0.1'
 	port_ds = 10000
-	#port_early = 10001
-	#port_late = 10002
+	# port_early = 10001
+	# port_late = 10002
 	port_misc = 10003
 
-	nSources = 1
+	nSources = 2
 	minAngleDifference = 4
 	minxDifference = 25
 
@@ -119,13 +122,33 @@ def start_tracker():
 
 	# Create OSC client
 	client_ds = udp_client.SimpleUDPClient(ip, port_ds)
-	#client_early = udp_client.SimpleUDPClient(ip, port_early)
-	#client_late = udp_client.SimpleUDPClient(ip, port_late)
+	# client_early = udp_client.SimpleUDPClient(ip, port_early)
+	# client_late = udp_client.SimpleUDPClient(ip, port_late)
 	client_misc = udp_client.SimpleUDPClient(ip, port_misc)
 
 	# init openvr for HTC Vive
 	help(openvr.VRSystem)
 	vr = openvr.init(openvr.VRApplication_Scene)
+
+	audio_index = 0
+	virtual_outchannel_bin = [0, 1]  # erste Quelle auf LS 1
+	out_channels_trans = [1, 0]  # erste Quelle auf LS 2
+
+	loudness = 0.05
+	pauseConvolution = False
+	pausePlayback = True
+	audio_files = ["signals/noise_noise_silence.wav",
+				   "signals/speech_noise_silence.wav",
+				   "signals/speech_speech_silence.wav",
+				   "signals/guitar_voice_silence.wav"]
+	audio_index = 0
+	in_channels_trans = [1, 2]
+	in_channels_bin = [0, 3]
+	in_channels_trans_before = []
+	in_channels_bin_before = []
+	save_in_channels = []
+	state = "normal"
+	use_HP = False
 
 	# poses_t = openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount
 	# poses = poses_t()
@@ -133,7 +156,7 @@ def start_tracker():
 															  openvr.k_unMaxTrackedDeviceCount)
 
 	# find tracker
-	trackernr = 4
+	trackernr = 3
 	print(openvr.k_unMaxTrackedDeviceCount)
 	for i in range(openvr.k_unMaxTrackedDeviceCount):
 		if poses[i].bPoseIsValid:
@@ -146,10 +169,9 @@ def start_tracker():
 		print("Could not find suitable tracker!")
 		exit()
 
-
 	loudness = 0.1
 	pauseConvolution = False
-	pausePlayback = False
+	pausePlayback = True
 
 	yaw_offset = 0
 	position_offset = 0
@@ -166,17 +188,18 @@ def start_tracker():
 			# get the Trackingdata in the disired form
 			yaw, pitch, roll = getEulerAngles(tracker_pose)
 			posX, posY, posZ = getXYZPosition(tracker_pose)
+			posZ = -1 * posZ
 
 			yaw = yaw + 0
 			if yaw < 0:
 				yaw = 360 + yaw
 
-			#pitch = pitch + 0
-			#if pitch < 0:
+			# pitch = pitch + 0
+			# if pitch < 0:
 			#	pitch = 360 + pitch
 
-			#roll = roll + 0
-			#if roll < 0:
+			# roll = roll + 0
+			# if roll < 0:
 			#	roll = 360 + roll
 
 			# key "+" on numpad for increasing volume
@@ -205,6 +228,82 @@ def start_tracker():
 				if key == 32:
 					position_offset = -1 * posZ
 					yaw_offset = -1 * yaw
+
+				# keys "1", "2", "3", "4" for choosing the audio
+				if key in [49, 50, 51, 52]:
+					audio_index = key - 49
+					client_misc.send_message(oscIdentifier_soundfile, [audio_files[audio_index]])
+
+				# key "r" to switch the source position of real and virtual sources
+				if key == 114:
+					out_channels_trans = out_channels_trans[::-1]
+					virtual_outchannel_bin = virtual_outchannel_bin[::-1]
+
+					client_misc.send_message(oscIdentifier_mapping,
+											 [in_channels_bin, in_channels_trans, out_channels_trans])
+
+				# key "t" to switch real and virtual source
+				if key == 116:
+					out_channels_trans = out_channels_trans[::-1]
+					virtual_outchannel_bin = virtual_outchannel_bin[::-1]
+
+					save_in_channels = in_channels_bin
+					in_channels_bin = in_channels_trans
+					in_channels_trans = save_in_channels
+
+					if state == "only real":
+						state = "only virtual"
+					elif state == "only virtual":
+						state = "only real"
+
+					client_misc.send_message(oscIdentifier_mapping,
+											 [in_channels_bin, in_channels_trans, out_channels_trans])
+				# key "a" to have a real and a virtual source
+				if key == 97:
+
+					if state != "normal":
+						in_channels_bin = in_channels_bin_before.copy()
+						in_channels_trans = in_channels_trans_before.copy()
+						state = "normal"
+
+					client_misc.send_message(oscIdentifier_mapping,
+											 [in_channels_bin, in_channels_trans, out_channels_trans])
+				# key "s" to have only real sources
+				if key == 115:
+
+					if state == "normal":
+						in_channels_bin_before = in_channels_bin.copy()
+						in_channels_trans_before = in_channels_trans.copy()
+						state = "only real"
+					elif state == "only virtual":
+						state = "only real"
+
+					in_channels_bin = [2, 3]
+					in_channels_trans = out_channels_trans.copy()
+
+					client_misc.send_message(oscIdentifier_mapping,
+											 [in_channels_bin, in_channels_trans, out_channels_trans])
+				# key "d" to have only virtual sources
+				if key == 100:
+
+					if state == "normal":
+						in_channels_bin_before = in_channels_bin.copy()
+						in_channels_trans_before = in_channels_trans.copy()
+						state = "only virtual"
+					elif state == "only real":
+						state = "only virtual"
+
+					in_channels_bin = virtual_outchannel_bin.copy()
+					in_channels_trans = [2, 3]
+
+					client_misc.send_message(oscIdentifier_mapping,
+											 [in_channels_bin, in_channels_trans, out_channels_trans])
+
+				# key "h" to have only real sources
+				if key == 104:
+					use_HP = not use_HP
+
+					client_misc.send_message(oscIdentifier_headphonefilter, [use_HP])
 			# print(['YAW: ',yaw,' PITCH: ',pitch,'ROLL: ',roll])
 			# print(['X: ',round(posX,2),' Y: ',round(posY,2),'Z: ',round(posZ,2)])
 
@@ -220,19 +319,21 @@ def start_tracker():
 			# Build and send OSC message
 			# channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
 			yaw = min(yawVectorSubSampled, key=lambda x: abs(x - yaw))
-			current_position = int(np.argmin(np.array([round(abs(x - current_position_before)/25) for x in positionVectorSubSampled])) * 25)
+			current_position = int(np.argmin(
+				np.array([round(abs(x - current_position_before) / 25) for x in positionVectorSubSampled])) * 25)
 
-			print(['Yaw: ', round(yaw), '  x: ', current_position, f'({round(current_position_before, 2)})', 'loudness: ', round(loudness, 2), "pause Convol: ",
-				   pauseConvolution, 'pause Playback: ', pausePlayback])
+			print(['Yaw:', round(yaw), 'x:', current_position, f'({round(current_position_before, 2)})', 'loudness:', round(loudness, 1), "Convol:",
+				   not (pauseConvolution),
+				   'Playback:', not (pausePlayback), 'audio:', audio_index, 'state:', state, 'use HP:', use_HP])
 			# build OSC Message and send it
 			for n in range(0, nSources):
 				# channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
-				binsim_ds = [n, int(round(yaw)), 0, 0, current_position, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-				#binsim_early = [n, int(round(yaw)), 0, 0, current_position, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-				#binsim_late = [n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+				binsim_ds = [n, int(round(yaw)), 0, 0, current_position, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, virtual_outchannel_bin[n]]
+				# binsim_early = [n, int(round(yaw)), 0, 0, current_position, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+				# binsim_late = [n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 				client_ds.send_message(oscIdentifier_ds, binsim_ds)
-				#client_early.send_message(oscIdentifier_early, binsim_early)
-				#client_late.send_message(oscIdentifier_late, binsim_late)
+			# client_early.send_message(oscIdentifier_early, binsim_early)
+			# client_late.send_message(oscIdentifier_late, binsim_late)
 
 			sys.stdout.flush()
 
