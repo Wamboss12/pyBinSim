@@ -73,6 +73,8 @@ def start_tracker():
     current_x = 0
     loudness = 0.05
     pauseConvolution = False
+    pausePlayback_binsim = True
+    pausePlayback_tracking = False
     pausePlayback = True
     audio_files = ["signals/noise_noise_silence.wav",
                    "signals/speech_noise_silence.wav",
@@ -128,6 +130,7 @@ def start_tracker():
                 if yaw < 0:
                     yaw += 360
 
+
             # key "+" on numpad for increasing volume
             if key == 43:
                 if loudness < 1:
@@ -140,6 +143,18 @@ def start_tracker():
                     loudness -= 0.05
                     client_misc.send_message(oscIdentifier_loudness, [loudness])
 
+            # key "*" on numpad for increasing volume for binaural synthesis
+            if key == 42:
+                if loudness < 1:
+                    loudness += 0.05
+                    client_misc.send_message(oscIdentifier_loudness, [loudness])
+
+            # key "/" on numpad for decreasing volume for binaural synthesis
+            if key == 47:
+                if loudness > 0.05:
+                    loudness -= 0.05
+                    client_misc.send_message(oscIdentifier_loudness, [loudness])
+
             # key "c" for pausing the convolution
             if key == 99:
                 pauseConvolution = not pauseConvolution
@@ -147,8 +162,8 @@ def start_tracker():
 
             # key "p" for pausing the convolution
             if key == 112:
-                pausePlayback = not pausePlayback
-                client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
+                pausePlayback_binsim = not pausePlayback_binsim
+
 
             # keys "1", "2", "3", "4" for choosing the audio
             if key in [49, 50, 51, 52]:
@@ -224,10 +239,20 @@ def start_tracker():
 
                 client_misc.send_message(oscIdentifier_headphonefilter, [use_HP])
 
+        if (pausePlayback_binsim or pausePlayback_tracking) != pausePlayback:
+            pausePlayback = (pausePlayback_binsim or pausePlayback_tracking)
+            client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
+
         yaw = min(yawVectorSubSampled, key=lambda x: abs(x - yaw))
         current_x = min(xVectorSubSampled, key=lambda x: abs(x-current_x))
-        print(['Yaw:', round(yaw), 'x:', current_x, 'loudness:', round(loudness, 1), "Convol:", not(pauseConvolution),
-               'Playback:', not(pausePlayback), 'audio:', audio_index, 'state:', state, 'use HP:', use_HP])
+        #print(['Yaw:', round(yaw), 'x:', current_x, 'loudness:', round(loudness, 1), "Convol:", not(pauseConvolution),
+        #       'Playback:', not(pausePlayback), 'audio:', audio_index, 'state:', state, 'use HP:', use_HP])
+
+        print(
+            f"Yaw: {round(yaw)}    x: {current_x} ({round(current_x, 2)})    loudness: {round(loudness, 2)}    "
+            f"Playback: {pausePlayback} ({pausePlayback_binsim}/{pausePlayback_tracking})    audio: {audio_index + 1}    use HP: {use_HP}    "
+            f"state: {state}"
+        )
 
         # build OSC Message and send it
         for n in range(0, nSources):

@@ -109,8 +109,6 @@ def start_tracker():
 
     # Create OSC client
     client_ds = udp_client.SimpleUDPClient(ip, port_ds)
-    # client_early = udp_client.SimpleUDPClient(ip, port_early)
-    # client_late = udp_client.SimpleUDPClient(ip, port_late)
     client_misc = udp_client.SimpleUDPClient(ip, port_misc)
 
     # init openvr for HTC Vive

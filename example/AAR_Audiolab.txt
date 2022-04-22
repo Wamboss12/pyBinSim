@@ -12,7 +12,8 @@ samplingRate 48000
 enableCrossfading True
 useHeadphoneFilter False
 headphone_filterSize 512
-loudnessFactor 0.05
+loudnessFactorTrans 0.05
+loudnessFactorBin 0.1
 loopSound True
 pauseConvolution False
 pauseAudioPlayback True

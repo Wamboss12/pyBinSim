@@ -78,7 +78,8 @@ class BinSimConfig(object):
                                   'enableCrossfading': False,
                                   'useHeadphoneFilter': False,
                                   'headphone_filterSize': 1024,
-                                  'loudnessFactor': float(1),
+                                  'loudnessFactorTrans': float(0.05),
+                                  'loudnessFactorBin': float(0.1),
                                   'samplingRate': 48000,
                                   'loopSound': True,
                                   'pauseConvolution': False,
@@ -453,11 +454,10 @@ def audio_callback(binsim):
         # Scale data
         # binsim.result = np.divide(binsim.result, float((amount_channels) * 2))
         if len(binsim.InChannels4bin) > 0:
-            binsim.result_bin = torch.multiply(binsim.result_bin, callback.config.get('loudnessFactor') / float(len(binsim.InChannels4bin)))
+            binsim.result_bin = torch.multiply(binsim.result_bin, callback.config.get('loudnessFactorBin') / float(len(binsim.InChannels4bin)))
             outdata[:, binsim.OutChannels4bin] = np.transpose(binsim.result_bin.detach().cpu().numpy())
         if len(binsim.InChannels4trans) > 0:
-            binsim.result_trans *= callback.config.get('loudnessFactor')
-            binsim.result_trans /= float(len(binsim.InChannels4trans))
+            binsim.result_trans *= (binsim.current_config.get('loudnessFactorTrans') / float(len(binsim.InChannels4trans)))
             outdata[:, binsim.OutChannels4trans] = binsim.result_trans.T
 
         # Report buffer underrun - Still working with sounddevice package?

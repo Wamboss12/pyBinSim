@@ -106,6 +106,7 @@ class OscReceiver(object):
         osc_dispatcher_misc.map("/pyBinSimLoudness", self.handle_loudness)
         osc_dispatcher_misc.map("/pyBinSimMapping", self.handle_mapping)
         osc_dispatcher_misc.map("/pyBinSimHP", self.handle_HP)
+        osc_dispatcher_misc.map("/pyBinSimSetting", self.handle_Setting)
 
         self.server = osc_server.ThreadingOSCUDPServer(
             (self.ip, self.port1), osc_dispatcher_ds)
@@ -276,11 +277,12 @@ class OscReceiver(object):
         self.currentConfig.set('pauseConvolution', value)
         self.log.info("Pausing convolution")
 
-    def handle_loudness(self, identifier, value):
+    def handle_loudness(self, identifier, value_trans, value_bin):
         """ Handler for loudness control"""
         assert identifier == "/pyBinSimLoudness"
 
-        self.currentConfig.set('loudnessFactor', value)
+        self.currentConfig.set('loudnessFactorTrans', value_trans)
+        self.currentConfig.set('loudnessFactorBin', value_bin)
         self.log.info("Changing loudness")
 
     def handle_mapping(self, identifier, new_inChannels4bin, new_inChannels4trans, new_outChannelsTrans):
@@ -298,6 +300,16 @@ class OscReceiver(object):
 
         self.currentConfig.set('useHeadphoneFilter', value)
         self.log.info("Changing HP filter use")
+
+    def handle_Setting(self, identifier, soundfile, HP, loud_trans, loud_bin, in_bin, in_trans, out_trans):
+        """ Handler for Setting control"""
+        assert identifier == "/pyBinSimSetting"
+
+        self.handle_HP("/pyBinSimHP", HP)
+        self.handle_loudness("/pyBinSimLoudness", loud_trans, loud_bin)
+        self.handle_mapping("/pyBinSimMapping", in_bin, in_trans, out_trans)
+        self.handle_file_input("/pyBinSimFile", soundfile)
+        self.log.info("Changing the Setting!")
 
     def start_listening(self):
         """Start osc receiver in background Thread"""
