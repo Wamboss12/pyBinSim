@@ -309,7 +309,7 @@ class OscReceiver(object):
         self.handle_loudness("/pyBinSimLoudness", loud_trans, loud_bin)
         self.handle_mapping("/pyBinSimMapping", in_bin, in_trans, out_trans)
         self.handle_file_input("/pyBinSimFile", soundfile)
-        self.log.info("Changing the Setting!")
+        self.log.info("Changing the Setting!\n\n\n")
 
     def start_listening(self):
         """Start osc receiver in background Thread"""

@@ -29,7 +29,7 @@ import time
 import openvr
 import msvcrt
 import numpy as np
-
+import copy
 
 def matrixFromPose(pose):
     v = pose.mDeviceToAbsoluteTracking
@@ -89,11 +89,8 @@ def getXYZPosition(pose):
 def start_tracker():
     oscIdentifier_ds = '/pyBinSim_ds_Filter'
     oscIdentifier_loudness = '/pyBinSimLoudness'
-    oscIdentifier_convolution = '/pyBinSimPauseConvolution'
     oscIdentifier_playback = '/pyBinSimPauseAudioPlayback'
-    oscIdentifier_soundfile = '/pyBinSimFile'
-    oscIdentifier_mapping = '/pyBinSimMapping'
-    oscIdentifier_headphonefilter = '/pyBinSimHP'
+    oscIdentifierSetting = "/pyBinSimSetting"
 
     ip = '127.0.0.1'
     port_ds = 10000
@@ -115,25 +112,53 @@ def start_tracker():
     help(openvr.VRSystem)
     vr = openvr.init(openvr.VRApplication_Scene)
 
-    audio_index = 0
-    virtual_outchannel_bin = [0, 1]  # erste Quelle auf LS 1
-    out_channels_trans = [1, 0]  # erste Quelle auf LS 2
-
-    loudness = 0.05
-    pauseConvolution = False
+    loudness_trans = 0.08
+    loudness_bin = 0.05
+    loudness_bin_HP = 0.60
+    loudness_bin_woHP = 0.31
+    loudness_step = 0.01
+    pausePlayback_binsim = True
+    pausePlayback_tracking = False
     pausePlayback = True
     audio_files = ["signals/noise_noise_silence.wav",
                    "signals/speech_noise_silence.wav",
-                   "signals/speech_speech_silence.wav",
-                   "signals/guitar_voice_silence.wav"]
+                   "signals/guitar_voice_silence.wav",
+                   "new_signals/person_person_silence.wav",
+                   "new_signals/pride_xavier_silence.wav"]
     audio_index = 0
-    in_channels_trans = [1, 2]
-    in_channels_bin = [0, 3]
-    in_channels_trans_before = []
-    in_channels_bin_before = []
-    save_in_channels = []
-    state = "normal"
+    virtual_outchannel_bin = [0, 1]  # erste Quelle auf LS 1
     use_HP = False
+    settings = {
+        # beides
+        # real: weiblich
+        1: {"audio": 3, "in_trans": [0, 2], "in_bin": [1, 3], "out_trans": [1, 0], "out_bin": [0, 1], "HP": False,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_woHP},
+        # real: männlich
+        2: {"audio": 3, "in_trans": [1, 2], "in_bin": [0, 3], "out_trans": [0, 1], "out_bin": [1, 0], "HP": False,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_woHP},
+        #real: männlich
+        3: {"audio": 3, "in_trans": [1, 2], "in_bin": [0, 3], "out_trans": [0, 1], "out_bin": [1, 0], "HP": True,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_HP},
+        # real: weiblich
+        4: {"audio": 3, "in_trans": [0, 2], "in_bin": [1, 3], "out_trans": [1, 0], "out_bin": [0, 1], "HP": True,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_HP},
+
+        # virtuell
+        5: {"audio": 3, "in_trans": [2, 3], "in_bin": [0, 1], "out_trans": [1, 0], "out_bin": [0, 1], "HP": True,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_HP},
+        6: {"audio": 3, "in_trans": [2, 3], "in_bin": [0, 1], "out_trans": [1, 0], "out_bin": [0, 1], "HP": False,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_woHP},
+
+        # real
+        7: {"audio": 3, "in_trans": [0, 1], "in_bin": [2, 3], "out_trans": [0, 1], "out_bin": [1, 0], "HP": True,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_HP},
+
+
+        }
+    num_settings = len(settings.keys())
+    num_previous_setting = 0
+    num_current_setting = 1
+    current_setting = settings[num_current_setting]
 
     # poses_t = openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount
     # poses = poses_t()
@@ -154,12 +179,17 @@ def start_tracker():
         print("Could not find suitable tracker!")
         exit()
 
-    loudness = 0.1
-    pauseConvolution = False
-    pausePlayback = True
+    max_distance_to_line = 10
+    max_pitch_difference = 15
+    max_roll_difference = 15
 
     yaw_offset = 0
     position_offset = 0
+    posX_offset = 0
+
+    radius = 0
+    pitch_offset = 0
+    roll_offset = 0
 
     try:
         while 1:
@@ -183,121 +213,99 @@ def start_tracker():
             # if pitch < 0:
             #	pitch = 360 + pitch
 
-            # roll = roll + 0
-            # if roll < 0:
-            #	roll = 360 + roll
+            roll = roll
+            #if roll < 0:
+            #    roll = 360 + roll
 
             # key "+" on numpad for increasing volume
             if msvcrt.kbhit():
                 # char = msvcrt.getch()
                 key = ord(msvcrt.getch())
-                if key == 43:
-                    if loudness < 0.5:
-                        loudness += 0.05
-                        client_misc.send_message(oscIdentifier_loudness, [loudness])
-                # key "-" on numpad for increasing volume
-                if key == 45:
-                    if loudness > 0.05:
-                        loudness -= 0.05
-                        client_misc.send_message(oscIdentifier_loudness, [loudness])
-                # key "c" for pausing the convolution
-                if key == 99:
-                    pauseConvolution = not pauseConvolution
-                    client_misc.send_message(oscIdentifier_convolution, [str(pauseConvolution)])
+
+                # "up_arrow"
+                if key == 72:
+                    if pausePlayback_binsim and num_current_setting < num_settings:
+                        num_current_setting += 1
+
+                # "down_arrow"
+                if key == 80:
+                    if pausePlayback_binsim and num_current_setting > 1:
+                        num_current_setting -= 1
                 # key "p" for pausing the convolution
                 if key == 112:
-                    pausePlayback = not pausePlayback
-                    client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
+                    pausePlayback_binsim = not pausePlayback_binsim
                 # 'Space' for setting the offset so that the current position and orientation are azimut = 0 and
                 # position = 0
                 if key == 32:
                     position_offset = -1 * posZ
                     yaw_offset = -1 * yaw
+                    posX_offset = -1 * posX
+                    radius = 10
+                    pitch_offset = -1 * pitch
+                    roll_offset = -1 * roll
 
-                # keys "1", "2", "3", "4" for choosing the audio
-                if key in [49, 50, 51, 52]:
-                    audio_index = key - 49
-                    client_misc.send_message(oscIdentifier_soundfile, [audio_files[audio_index]])
+                # key "+" on numpad for increasing volume for transparency
+                if key == 43:
+                    if loudness_trans < 1:
+                        loudness_trans += loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
-                # key "r" to switch the source position of real and virtual sources
-                if key == 114:
-                    out_channels_trans = out_channels_trans[::-1]
-                    virtual_outchannel_bin = virtual_outchannel_bin[::-1]
+                # key "-" on numpad for increasing volume for transparency
+                if key == 45:
+                    if loudness_trans > 0.05:
+                        loudness_trans -= loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
-                    client_misc.send_message(oscIdentifier_mapping,
-                                             [in_channels_bin, in_channels_trans, out_channels_trans])
+                # key "*" on numpad for increasing volume for binaural synthesis
+                if key == 42:
+                    if loudness_bin < 1:
+                        loudness_bin += loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
-                # key "t" to switch real and virtual source
-                if key == 116:
-                    out_channels_trans = out_channels_trans[::-1]
-                    virtual_outchannel_bin = virtual_outchannel_bin[::-1]
-
-                    save_in_channels = in_channels_bin
-                    in_channels_bin = in_channels_trans
-                    in_channels_trans = save_in_channels
-
-                    if state == "only real":
-                        state = "only virtual"
-                    elif state == "only virtual":
-                        state = "only real"
-
-                    client_misc.send_message(oscIdentifier_mapping,
-                                             [in_channels_bin, in_channels_trans, out_channels_trans])
-                # key "a" to have a real and a virtual source
-                if key == 97:
-
-                    if state != "normal":
-                        in_channels_bin = in_channels_bin_before.copy()
-                        in_channels_trans = in_channels_trans_before.copy()
-                        state = "normal"
-
-                    client_misc.send_message(oscIdentifier_mapping,
-                                             [in_channels_bin, in_channels_trans, out_channels_trans])
-                # key "s" to have only real sources
-                if key == 115:
-
-                    if state == "normal":
-                        in_channels_bin_before = in_channels_bin.copy()
-                        in_channels_trans_before = in_channels_trans.copy()
-                        state = "only real"
-                    elif state == "only virtual":
-                        state = "only real"
-
-                    in_channels_bin = [2, 3]
-                    in_channels_trans = out_channels_trans.copy()
-
-                    client_misc.send_message(oscIdentifier_mapping,
-                                             [in_channels_bin, in_channels_trans, out_channels_trans])
-                # key "d" to have only virtual sources
-                if key == 100:
-
-                    if state == "normal":
-                        in_channels_bin_before = in_channels_bin.copy()
-                        in_channels_trans_before = in_channels_trans.copy()
-                        state = "only virtual"
-                    elif state == "only real":
-                        state = "only virtual"
-
-                    in_channels_bin = virtual_outchannel_bin.copy()
-                    in_channels_trans = [2, 3]
-
-                    client_misc.send_message(oscIdentifier_mapping,
-                                             [in_channels_bin, in_channels_trans, out_channels_trans])
-
-                # key "h" to have only real sources
-                if key == 104:
-                    use_HP = not use_HP
-
-                    client_misc.send_message(oscIdentifier_headphonefilter, [use_HP])
+                # key "/" on numpad for decreasing volume for binaural synthesis
+                if key == 47:
+                    if loudness_bin > 0.05:
+                        loudness_bin -= loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
             # adjustment to desired global origin
             current_position_before = (posZ + position_offset) * 100
             yaw += yaw_offset
+            posX = (posX + posX_offset) * 100
+            current_position_before += (math.cos(math.radians(yaw)) * radius)
+            posX += (-1 * math.sin(math.radians(yaw)) * radius)
+            pitch += pitch_offset
+            roll += roll_offset
 
-            if yaw < 0:
-                yaw = 360 + yaw
+            if abs(pitch) > max_pitch_difference or abs(roll) > max_roll_difference or current_position_before > 200+max_distance_to_line or current_position_before < -max_distance_to_line or abs(posX) > max_distance_to_line:
+                pausePlayback_tracking = True
+            else:
+                pausePlayback_tracking = False
 
-            # yaw = 360 - yaw
+            if (pausePlayback_binsim or pausePlayback_tracking) != pausePlayback:
+                pausePlayback = (pausePlayback_binsim or pausePlayback_tracking)
+                client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
+
+            if num_current_setting != num_previous_setting:
+                num_previous_setting = copy.deepcopy(num_current_setting)
+                current_setting = settings[num_previous_setting]
+
+                audio_index = current_setting["audio"]
+                in_channels_trans = current_setting["in_trans"]
+                in_channels_bin = current_setting["in_bin"]
+                out_channels_trans = current_setting["out_trans"]
+                virtual_outchannel_bin = current_setting["out_bin"]
+                use_HP = current_setting["HP"]
+                loudness_trans = current_setting["loudness_trans"]
+                loudness_bin = current_setting["loudness_bin"]
+
+                client_misc.send_message(oscIdentifierSetting, [audio_files[audio_index],
+                                                                use_HP,
+                                                                loudness_trans,
+                                                                loudness_bin,
+                                                                in_channels_bin,
+                                                                in_channels_trans,
+                                                                out_channels_trans])
 
             # Build and send OSC message
             # channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
@@ -306,8 +314,16 @@ def start_tracker():
                 np.array([round(abs(x - current_position_before) / 25) for x in positionVectorSubSampled])) * 25)
 
             print(
-                f"Yaw: {round(yaw)}    x: {current_position} ({round(current_position_before, 2)})    loudness: {round(loudness, 2)}    "
-                f"Playback: {not pausePlayback}    audio: {audio_index+1}    use HP: {use_HP}    state: {state}"
+                f"Yaw: {round(yaw)}    "
+                f"z: {current_position} ({round(current_position_before)})    "
+                f"x: {round(posX)}    "
+                f"roll: {round(roll)}    "
+                f"pitch: {round(pitch)}    "
+                f"vol: ({round(loudness_trans, 2)}|{round(loudness_bin, 2)})    "
+                f"Sound: {str(not pausePlayback)[0]} ({str(not pausePlayback_binsim)[0]}/{str(not pausePlayback_tracking)[0]})    "
+                f"audio: {audio_index}    "
+                f"use HP: {use_HP}    "
+                f"setting: {num_current_setting}/{num_settings}"
             )
 
             # build OSC Message and send it

@@ -54,7 +54,7 @@ def start_tracker():
 
     yaw = 0
     current_x = 0
-    loudness_trans = 0.1
+    loudness_trans = 0.08
     loudness_bin = 0.05
     loudness_step = 0.01
     pausePlayback_binsim = True
@@ -63,18 +63,22 @@ def start_tracker():
     audio_files = ["signals/noise_noise_silence.wav",
                    "signals/speech_noise_silence.wav",
                    "signals/speech_speech_silence.wav",
-                   "signals/guitar_voice_silence.wav"]
+                   "signals/guitar_voice_silence.wav",
+                   "signals/noise_silence.wav",
+                   "signals/speech_silence.wav",]
     audio_index = 0
     virtual_outchannel_bin = [0, 1]  # erste Quelle auf LS 1
     use_HP = False
     settings = {
-        1: {"audio": 0, "in_trans": [1, 2], "in_bin": [0, 3], "out_trans": [1, 0], "out_bin": [0, 1], "HP": False,
-            "loudness_trans": 0.1, "loudness_bin": 0.05},
-        2: {"audio": 1, "in_trans": [1, 2], "in_bin": [0, 3], "out_trans": [1, 0], "out_bin": [0, 1], "HP": True,
+        1: {"audio": 2, "in_trans": [0, 2], "in_bin": [1, 3], "out_trans": [1, 0], "out_bin": [0, 1], "HP": False,
+            "loudness_trans": 0.08, "loudness_bin": 0.05},
+        2: {"audio": 2, "in_trans": [0, 2], "in_bin": [1, 3], "out_trans": [0, 1], "out_bin": [1, 0], "HP": False,
+            "loudness_trans": 0.08, "loudness_bin": 0.05},
+        3: {"audio": 5, "in_trans": [0, 1], "in_bin": [2, 3], "out_trans": [1, 0], "out_bin": [0, 1], "HP": True,
             "loudness_trans": 0.1, "loudness_bin": 0.2}
         }
     num_settings = len(settings.keys())
-    num_previous_setting = 1
+    num_previous_setting = 0
     num_current_setting = 1
     current_setting = settings[num_current_setting]
 
@@ -130,25 +134,25 @@ def start_tracker():
             if key == 43:
                 if loudness_trans < 1:
                     loudness_trans += loudness_step
-                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_trans])
+                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
             # key "-" on numpad for increasing volume for transparency
             if key == 45:
                 if loudness_trans > 0.05:
                     loudness_trans -= loudness_step
-                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_trans])
+                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
             # key "*" on numpad for increasing volume for binaural synthesis
             if key == 42:
                 if loudness_bin < 1:
                     loudness_bin += loudness_step
-                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_trans])
+                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
             # key "/" on numpad for decreasing volume for binaural synthesis
             if key == 47:
                 if loudness_bin > 0.05:
                     loudness_bin -= loudness_step
-                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_trans])
+                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
         if (pausePlayback_binsim or pausePlayback_tracking) != pausePlayback:
             pausePlayback = (pausePlayback_binsim or pausePlayback_tracking)
@@ -167,7 +171,7 @@ def start_tracker():
             loudness_trans = current_setting["loudness_trans"]
             loudness_bin = current_setting["loudness_bin"]
 
-            client_ds.send_message(oscIdentifierSetting, [audio_files[audio_index],
+            client_misc.send_message(oscIdentifierSetting, [audio_files[audio_index],
                                                           use_HP,
                                                           loudness_trans,
                                                           loudness_bin,
@@ -180,7 +184,7 @@ def start_tracker():
 
         print(
             f"Yaw: {round(yaw)}    x: {current_x} ({round(current_x, 2)})    loudness: {round(loudness_trans, 2)}|{round(loudness_bin, 2)}    "
-            f"Playback: {pausePlayback} ({pausePlayback_binsim}/{pausePlayback_tracking})    audio: {audio_index + 1}    use HP: {use_HP}    "
+            f"Playback: {not pausePlayback} ({not pausePlayback_binsim}/{not pausePlayback_tracking})    audio: {audio_index + 1}    use HP: {use_HP}    "
             f"setting: {num_current_setting}/{num_settings}"
         )
 
