@@ -291,7 +291,7 @@ class BinSim(object):
                                       self.config.get('filterList'),
                                       self.config.get('filterDatabase'),
                                       self.config.get('torchStorage[cpu/cuda]'),
-                                      True,
+                                      self.config.get("useHeadphoneFilter"),
                                       self.config.get('headphone_filterSize'),
                                       ds_size,
                                       early_size,
@@ -333,13 +333,13 @@ class BinSim(object):
 
         # HP Equalization convolver
         convolverHP = None
-        #if self.config.get('useHeadphoneFilter'):
-        convolverHP = ConvolverTorch(self.config.get('headphone_filterSize'), self.blockSize, True, 2,
-                                     True,
-                                     self.config.get('torchConvolution[cpu/cuda]'))
-        convolverHP.activate(True)
-        hpfilter = filterStorage.get_headphone_filter()
-        convolverHP.setIR(0, hpfilter)
+        if self.config.get('useHeadphoneFilter'):
+            convolverHP = ConvolverTorch(self.config.get('headphone_filterSize'), self.blockSize, True, 2,
+                                         True,
+                                         self.config.get('torchConvolution[cpu/cuda]'))
+            convolverHP.activate(True)
+            hpfilter = filterStorage.get_headphone_filter()
+            convolverHP.setIR(0, hpfilter)
 
         return convolverHP, ds_convolver, early_convolver, late_convolver, input_Buffer, input_BufferHP, \
                filterStorage, oscReceiver, soundHandler
@@ -444,7 +444,7 @@ def audio_callback(binsim):
                 binsim.result_bin[1, :] = torch.sum(torch.stack([right_ds, right_early, right_late]), keepdim=True, dim=0)
 
                 # Finally apply Headphone Filter
-                if binsim.current_config.get('useHeadphoneFilter'):
+                if binsim.config.get('useHeadphoneFilter'):
                     result_buffer = binsim.input_BufferHP.process(binsim.result_bin)
                     binsim.result_bin[0, :], binsim.result_bin[1, :] = binsim.convolverHP.process(result_buffer)
 
