@@ -30,6 +30,7 @@ import time
 import openvr
 import msvcrt
 import numpy as np
+import random
 
 
 def matrixFromPose(pose):
@@ -87,6 +88,19 @@ def getXYZPosition(pose):
     return posX, posY, posZ
 
 
+def random_loudnessad_justment(loudness, min_adjust=-3, max_adjust=1):
+    if min_adjust > max_adjust:
+        save = copy.deepcopy(min_adjust)
+        min_adjust = copy.deepcopy(max_adjust)
+        max_adjust = copy.deepcopy(save)
+
+    loudness_adjustment_in_dB = random.randrange(min_adjust * 10, max_adjust * 10) / 10
+    loudness_in_dB = 20 * math.log10(loudness)
+
+    return round(math.pow(10, (loudness_in_dB + loudness_adjustment_in_dB) / 20) - loudness,
+                 3), loudness_adjustment_in_dB
+
+
 def start_tracker():
     oscIdentifier_ds = '/pyBinSim_ds_Filter'
     oscIdentifier_loudness = '/pyBinSimLoudness'
@@ -132,7 +146,13 @@ def start_tracker():
         exit()
 
     loudness_trans = 0.08
-    loudness_bin = 0.05
+    loudness_bin = 0.50
+    loudness_adjustment_trans = 0.0
+    loudness_adjustment_bin = 0.0
+    db_trans = 0
+    db_bin = 0
+    max_loudness_adjustment = 1
+    min_loudness_adjustment = -3
     loudness_step = 0.01
 
     state = "normal"
@@ -144,6 +164,10 @@ def start_tracker():
     pausePlayback_tracking = False
     pausePlayback = True
     stop_for_deviation = False
+
+    sources = ["real"]
+    source_front = "virtual"
+    source_side = "real"
 
     max_distance_to_line = 10
     max_pitch_difference = 15
@@ -201,7 +225,6 @@ def start_tracker():
             # roll = roll + 0
             # if roll < 0:
             #	roll = 360 + roll
-
 
             if msvcrt.kbhit():
                 # char = msvcrt.getch()
@@ -275,6 +298,10 @@ def start_tracker():
                     in_channels_bin = copy.deepcopy(in_channels_trans)
                     in_channels_trans = copy.deepcopy(save_in_channels)
 
+                    save_in_channels = copy.deepcopy(in_channels_bin_before)
+                    in_channels_bin_before = copy.deepcopy(in_channels_trans_before)
+                    in_channels_trans_before = copy.deepcopy(save_in_channels)
+
                     if state == "only real":
                         state = "only virtual"
                     elif state == "only virtual":
@@ -329,6 +356,17 @@ def start_tracker():
                     if HP >= len(HP_names):
                         HP = 0
 
+                # key "w" to choose which HP filter to use
+                if key == 119:
+                    loudness_adjustment_trans, db_trans = random_loudnessad_justment(loudness_adjustment_trans,
+                                                                                     min_loudness_adjustment,
+                                                                                     max_loudness_adjustment)
+                    loudness_adjustment_bin, db_bin = random_loudnessad_justment(loudness_adjustment_bin,
+                                                                                 min_loudness_adjustment,
+                                                                                 max_loudness_adjustment)
+                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans + loudness_adjustment_trans,
+                                                                      loudness_bin + loudness_adjustment_bin])
+
             current_position_before = (posZ + position_offset) * 100
             yaw += yaw_offset
             posX = (posX + posX_offset) * 100
@@ -340,7 +378,9 @@ def start_tracker():
                 yaw = 360 + yaw
 
             if stop_for_deviation:
-                pausePlayback_tracking = (abs(pitch) > max_pitch_difference or abs(roll) > max_roll_difference or current_position_before > 200+max_distance_to_line or current_position_before < -max_distance_to_line or abs(posX) > max_distance_to_line)
+                pausePlayback_tracking = (abs(pitch) > max_pitch_difference or abs(
+                    roll) > max_roll_difference or current_position_before > 200 + max_distance_to_line or current_position_before < -max_distance_to_line or abs(
+                    posX) > max_distance_to_line)
 
             if (pausePlayback_binsim or pausePlayback_tracking) != pausePlayback:
                 pausePlayback = (pausePlayback_binsim or pausePlayback_tracking)
@@ -353,15 +393,37 @@ def start_tracker():
             current_position = int(np.argmin(
                 np.array([round(abs(x - current_position_before) / 25) for x in positionVectorSubSampled])) * 25)
 
+            if in_channels_trans[0] in [0, 1]:
+                if out_channels_trans[0] == 0:
+                    source_front = "real"
+                else:
+                    source_side = "real"
+            if in_channels_trans[1] in [0, 1]:
+                if out_channels_trans[1] == 0:
+                    source_front = "real"
+                else:
+                    source_side = "real"
+            if in_channels_bin[0] in [0, 1]:
+                if virtual_outchannel_bin[0] == 0:
+                    source_front = "virtual"
+                else:
+                    source_side = "virtual"
+            if in_channels_bin[1] in [0, 1]:
+                if virtual_outchannel_bin[1] == 0:
+                    source_front = "virtual"
+                else:
+                    source_side = "virtual"
+
             print(
-                f"Yaw: {round(yaw)} ({round(yaw_before)})    "
                 f"z/x: {current_position} ({round(current_position_before)}) / {round(posX)}    "
-                f"roll/pitch: {round(roll)} / {round(pitch)}    "
-                f"vol: ({round(loudness_trans, 2)}|{round(loudness_bin, 2)})    "
+                f"y/r/p: {round(yaw)} ({round(yaw_before)}) / {round(roll)} / {round(pitch)}    "
+                f"vol: ({round(loudness_trans + loudness_adjustment_trans, 2)}|{round(loudness_bin + loudness_adjustment_bin, 2)})    "
+                f"vol_adjust: ({db_trans}|{db_bin})"
                 f"Sound: {str(not pausePlayback)[0]} ({str(not pausePlayback_binsim)[0]}/{str(not pausePlayback_tracking)[0]})    "
                 f"audio: {audio_files[audio_index].split('/')[-1]}    "
                 f"HP: {HP_names[HP]}    "
-                f"state: {state}"
+                f"state: {state}    "
+                f"F/S: {source_front}/{source_side}"
             )
 
             # build OSC Message and send it
