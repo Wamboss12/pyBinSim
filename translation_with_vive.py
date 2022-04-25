@@ -19,6 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import copy
 
 from pythonosc import osc_message_builder
 from pythonosc import udp_client
@@ -109,39 +110,14 @@ def start_tracker():
 
     # Create OSC client
     client_ds = udp_client.SimpleUDPClient(ip, port_ds)
-    # client_early = udp_client.SimpleUDPClient(ip, port_early)
-    # client_late = udp_client.SimpleUDPClient(ip, port_late)
     client_misc = udp_client.SimpleUDPClient(ip, port_misc)
 
     # init openvr for HTC Vive
     help(openvr.VRSystem)
     vr = openvr.init(openvr.VRApplication_Scene)
 
-    audio_index = 0
-    virtual_outchannel_bin = [0, 1]  # erste Quelle auf LS 1
-    out_channels_trans = [1, 0]  # erste Quelle auf LS 2
-
-    loudness = 0.05
-    pauseConvolution = False
-    pausePlayback = True
-    audio_files = ["signals/noise_noise_silence.wav",
-                   "signals/speech_noise_silence.wav",
-                   "signals/speech_speech_silence.wav",
-                   "signals/guitar_voice_silence.wav"]
-    audio_index = 0
-    in_channels_trans = [1, 2]
-    in_channels_bin = [0, 3]
-    in_channels_trans_before = []
-    in_channels_bin_before = []
-    save_in_channels = []
-    state = "normal"
-    use_HP = False
-
-    # poses_t = openvr.TrackedDevicePose_t * openvr.k_unMaxTrackedDeviceCount
-    # poses = poses_t()
     poses = openvr.VRSystem().getDeviceToAbsoluteTrackingPose(openvr.TrackingUniverseStanding, 0,
                                                               openvr.k_unMaxTrackedDeviceCount)
-
     # find tracker
     trackernr = 3
     print(openvr.k_unMaxTrackedDeviceCount)
@@ -156,12 +132,42 @@ def start_tracker():
         print("Could not find suitable tracker!")
         exit()
 
-    loudness = 0.1
+    loudness_trans = 0.08
+    loudness_bin = 0.05
+    loudness_step = 0.01
+
+    state = "normal"
+    use_HP = False
     pauseConvolution = False
     pausePlayback = True
+    pausePlayback_binsim = True
+    pausePlayback_tracking = False
+    pausePlayback = True
+    stop_for_deviation = False
+
+    max_distance_to_line = 10
+    max_pitch_difference = 15
+    max_roll_difference = 15
 
     yaw_offset = 0
     position_offset = 0
+    posX_offset = 0
+
+    radius = 0
+    pitch_offset = 0
+    roll_offset = 0
+
+    in_channels_trans = [1, 2]
+    in_channels_bin = [0, 3]
+    in_channels_trans_before = []
+    in_channels_bin_before = []
+    virtual_outchannel_bin = [0, 1]  # erste Quelle auf LS 1
+    out_channels_trans = [1, 0]  # erste Quelle auf LS 2
+    save_in_channels = []
+
+    audio_files = ["signals/bandpassNoise_silence.wav",
+                   "signals/bandpassDialog.wav"]
+    audio_index = 0
 
     try:
         while 1:
@@ -189,35 +195,57 @@ def start_tracker():
             # if roll < 0:
             #	roll = 360 + roll
 
-            # key "+" on numpad for increasing volume
+
             if msvcrt.kbhit():
                 # char = msvcrt.getch()
                 key = ord(msvcrt.getch())
+
+                # key "+" on numpad for increasing volume for transparency
                 if key == 43:
-                    if loudness < 0.5:
-                        loudness += 0.05
-                        client_misc.send_message(oscIdentifier_loudness, [loudness])
-                # key "-" on numpad for increasing volume
+                    if loudness_trans < 1:
+                        loudness_trans += loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
+
+                # key "-" on numpad for increasing volume for transparency
                 if key == 45:
-                    if loudness > 0.05:
-                        loudness -= 0.05
-                        client_misc.send_message(oscIdentifier_loudness, [loudness])
+                    if loudness_trans > 0.05:
+                        loudness_trans -= loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
+
+                # key "*" on numpad for increasing volume for binaural synthesis
+                if key == 42:
+                    if loudness_bin < 1:
+                        loudness_bin += loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
+
+                # key "/" on numpad for decreasing volume for binaural synthesis
+                if key == 47:
+                    if loudness_bin > 0.05:
+                        loudness_bin -= loudness_step
+                        client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
+
                 # key "c" for pausing the convolution
                 if key == 99:
                     pauseConvolution = not pauseConvolution
                     client_misc.send_message(oscIdentifier_convolution, [str(pauseConvolution)])
                 # key "p" for pausing the convolution
                 if key == 112:
-                    pausePlayback = not pausePlayback
-                    client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
-                # 'Space' for setting the offset so that the current position and orientation are azimut = 0 and
-                # position = 0
+                    pausePlayback_binsim = not pausePlayback_binsim
+                # 'Space' for calibrate the position
                 if key == 32:
                     position_offset = -1 * posZ
+                    posX_offset = -1 * posX
+
+                # key 'enter' to calibrate orientation
+                if key == 13:
+                    radius = 10
                     yaw_offset = -1 * yaw
+                    pitch_offset = -1 * pitch
+                    roll_offset = -1 * roll
+                    stop_for_deviation = True
 
                 # keys "1", "2", "3", "4" for choosing the audio
-                if key in [49, 50, 51, 52]:
+                if key in [49, 50]:
                     audio_index = key - 49
                     client_misc.send_message(oscIdentifier_soundfile, [audio_files[audio_index]])
 
@@ -292,24 +320,41 @@ def start_tracker():
 
                     client_misc.send_message(oscIdentifier_headphonefilter, [use_HP])
 
-            # adjustment to desired global origin
             current_position_before = (posZ + position_offset) * 100
             yaw += yaw_offset
-
+            posX = (posX + posX_offset) * 100
+            current_position_before += (math.cos(math.radians(yaw)) * radius)
+            posX += (-1 * math.sin(math.radians(yaw)) * radius)
+            pitch += pitch_offset
+            roll += roll_offset
             if yaw < 0:
                 yaw = 360 + yaw
 
-            # yaw = 360 - yaw
+            if stop_for_deviation:
+                pausePlayback_tracking = (abs(pitch) > max_pitch_difference or abs(roll) > max_roll_difference or current_position_before > 200+max_distance_to_line or current_position_before < -max_distance_to_line or abs(posX) > max_distance_to_line)
+
+            if (pausePlayback_binsim or pausePlayback_tracking) != pausePlayback:
+                pausePlayback = (pausePlayback_binsim or pausePlayback_tracking)
+                client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
 
             # Build and send OSC message
             # channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
+            yaw_before = copy.deepcopy(yaw)
             yaw = min(yawVectorSubSampled, key=lambda x: abs(x - yaw))
             current_position = int(np.argmin(
                 np.array([round(abs(x - current_position_before) / 25) for x in positionVectorSubSampled])) * 25)
 
             print(
-                f"Yaw: {round(yaw)}    x: {current_position} ({round(current_position_before, 2)})    loudness: {round(loudness, 2)}    "
-                f"Playback: {not pausePlayback}    audio: {audio_index+1}    use HP: {use_HP}    state: {state}"
+                f"Yaw: {round(yaw)} ({round(yaw_before)})    "
+                f"z: {current_position} ({round(current_position_before)})    "
+                f"x: {round(posX)}    "
+                f"roll: {round(roll)}    "
+                f"pitch: {round(pitch)}    "
+                f"vol: ({round(loudness_trans, 2)}|{round(loudness_bin, 2)})    "
+                f"Sound: {str(not pausePlayback)[0]} ({str(not pausePlayback_binsim)[0]}/{str(not pausePlayback_tracking)[0]})    "
+                f"audio: {audio_index}    "
+                f"use HP: {use_HP}    "
+                f"state: {state}"
             )
 
             # build OSC Message and send it

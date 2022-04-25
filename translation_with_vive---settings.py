@@ -120,11 +120,11 @@ def start_tracker():
     pausePlayback_binsim = True
     pausePlayback_tracking = False
     pausePlayback = True
-    audio_files = ["signals/noise_noise_silence.wav",
-                   "signals/speech_noise_silence.wav",
-                   "signals/guitar_voice_silence.wav",
-                   "new_signals/person_person_silence.wav",
-                   "new_signals/pride_xavier_silence.wav"]
+    stop_for_deviation = False
+    audio_files = ["signals/noise_noise.wav",
+                   "signals/speech_noise.wav",
+                   "signals/bandpassNoise_silence.wav",
+                   "signals/bandpassDialog.wav"]
     audio_index = 0
     virtual_outchannel_bin = [0, 1]  # erste Quelle auf LS 1
     use_HP = False
@@ -153,6 +153,10 @@ def start_tracker():
         7: {"audio": 3, "in_trans": [0, 1], "in_bin": [2, 3], "out_trans": [0, 1], "out_bin": [1, 0], "HP": True,
             "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_HP},
 
+        8: {"audio": 2, "in_trans": [0, 1], "in_bin": [2, 3], "out_trans": [0, 1], "out_bin": [1, 0], "HP": False,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_woHP},
+        9: {"audio": 3, "in_trans": [0, 1], "in_bin": [2, 3], "out_trans": [0, 1], "out_bin": [1, 0], "HP": False,
+            "loudness_trans": loudness_trans, "loudness_bin": loudness_bin_woHP},
 
         }
     num_settings = len(settings.keys())
@@ -213,7 +217,7 @@ def start_tracker():
             # if pitch < 0:
             #	pitch = 360 + pitch
 
-            roll = roll
+            # roll = roll
             #if roll < 0:
             #    roll = 360 + roll
 
@@ -238,11 +242,15 @@ def start_tracker():
                 # position = 0
                 if key == 32:
                     position_offset = -1 * posZ
-                    yaw_offset = -1 * yaw
                     posX_offset = -1 * posX
+
+                # key 'enter' to calibrate orientation
+                if key == 13:
                     radius = 10
+                    yaw_offset = -1 * yaw
                     pitch_offset = -1 * pitch
                     roll_offset = -1 * roll
+                    stop_for_deviation = True
 
                 # key "+" on numpad for increasing volume for transparency
                 if key == 43:
@@ -268,6 +276,7 @@ def start_tracker():
                         loudness_bin -= loudness_step
                         client_misc.send_message(oscIdentifier_loudness, [loudness_trans, loudness_bin])
 
+
             # adjustment to desired global origin
             current_position_before = (posZ + position_offset) * 100
             yaw += yaw_offset
@@ -277,10 +286,8 @@ def start_tracker():
             pitch += pitch_offset
             roll += roll_offset
 
-            if abs(pitch) > max_pitch_difference or abs(roll) > max_roll_difference or current_position_before > 200+max_distance_to_line or current_position_before < -max_distance_to_line or abs(posX) > max_distance_to_line:
-                pausePlayback_tracking = True
-            else:
-                pausePlayback_tracking = False
+            if stop_for_deviation:
+                pausePlayback_tracking = (abs(pitch) > max_pitch_difference or abs(roll) > max_roll_difference or current_position_before > 200+max_distance_to_line or current_position_before < -max_distance_to_line or abs(posX) > max_distance_to_line)
 
             if (pausePlayback_binsim or pausePlayback_tracking) != pausePlayback:
                 pausePlayback = (pausePlayback_binsim or pausePlayback_tracking)

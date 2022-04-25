@@ -474,7 +474,7 @@ def audio_callback(binsim):
         binsim.time_usage = np.roll(binsim.time_usage, 1, axis=0)
         if binsim.ds_convolver.get_counter() % binsim.cpu_usage_update_rate == 0:
             binsim.log.info(
-                f'Audio callback utilization Mean: {np.mean(binsim.time_usage)} % - Max: {np.max(binsim.time_usage)}')
+                f'Audio callback utilization Mean: {np.round(np.mean(binsim.time_usage))} %  -  Max: {np.round(np.max(binsim.time_usage))} %')
 
     callback.config = binsim.config
 
