@@ -108,6 +108,7 @@ def start_tracker():
     oscIdentifier_playback = '/pyBinSimPauseAudioPlayback'
     oscIdentifier_soundfile = '/pyBinSimFile'
     oscIdentifier_mapping = '/pyBinSimMapping'
+    oscIdentifier_hp = "/pyBinSimHP"
 
     ip = '127.0.0.1'
     port_ds = 10000
@@ -145,8 +146,8 @@ def start_tracker():
         print("Could not find suitable tracker!")
         exit()
 
-    loudness_trans = 0.08
-    loudness_bin = 0.50
+    loudness_trans = 0.07
+    loudness_bin = 0.34
     loudness_adjustment_trans = 0.0
     loudness_adjustment_bin = 0.0
     db_trans = 0
@@ -156,21 +157,22 @@ def start_tracker():
     loudness_step = 0.01
 
     state = "normal"
-    HP = 0
-    HP_names = ["HP1", "HP2", "HP3"]
+    BRIR = 0
+    BRIRs = ["normal", "hearthrough", "idmt_minimum", "oldenburg", "oldenburg_minimum"]
+    use_HP = False
     pauseConvolution = False
     pausePlayback = True
     pausePlayback_binsim = True
     pausePlayback_tracking = False
+    pausePlayback_tracking_before = False
     pausePlayback = True
     stop_for_deviation = False
 
-    sources = ["real"]
     source_front = "virtual"
     source_side = "real"
 
-    max_distance_to_line = 10
-    max_pitch_difference = 15
+    max_distance_to_line = 15
+    max_pitch_difference = 20
     max_roll_difference = 15
 
     yaw_offset = 0
@@ -189,15 +191,15 @@ def start_tracker():
     out_channels_trans = [1, 0]  # erste Quelle auf LS 2
     save_in_channels = []
 
-    audio_files = ["signals/noise_silence.wav",
-                   "signals/noise_silence_bandpassed.wav",
-                   "signals/noise_silence_bandpassed_hard.wav",
-                   "signals/Dialog.wav",
-                   "signals/Dialog_bandpassed.wav",
-                   "signals/Dialog_bandpassed_hard.wav",
-                   "signals/music_sherlock.wav",
-                   "signals/music_sherlock_bandpassed.wav",
-                   "signals/music_sherlock_bandpassed_hard.wav"]
+    audio_files = ["example/signals/noise_silence.wav",
+                   "example/signals/noise_silence_bandpassed.wav",
+                   "example/signals/noise_silence_bandpassed_hard.wav",
+                   "example/signals/Dialog.wav",
+                   "example/signals/Dialog_bandpassed.wav",
+                   "example/signals/Dialog_bandpassed_hard.wav",
+                   "example/signals/music_sherlock.wav",
+                   "example/signals/music_sherlock_bandpassed.wav",
+                   "example/signals/music_sherlock_bandpassed_hard.wav"]
     audio_index = 0
 
     try:
@@ -261,6 +263,7 @@ def start_tracker():
                 # key "p" for pausing the convolution
                 if key == 112:
                     pausePlayback_binsim = not pausePlayback_binsim
+                    client_misc.send_message(oscIdentifier_playback, [str(pausePlayback_binsim)])
                 # 'Space' for calibrate the position
                 if key == 32:
                     position_offset = -1 * posZ
@@ -351,17 +354,22 @@ def start_tracker():
                                              [in_channels_bin, in_channels_trans, out_channels_trans])
 
                 # key "h" to choose which HP filter to use
-                if key == 104:
-                    HP = HP + 1
-                    if HP >= len(HP_names):
-                        HP = 0
+                if key == 113:
+                    BRIR = BRIR + 1
+                    if BRIR >= len(BRIRs):
+                        BRIR = 0
 
-                # key "w" to choose which HP filter to use
+                if key == 104:
+                    use_HP = not use_HP
+                    client_misc.send_message(oscIdentifier_hp, [use_HP])
+
+
+                # key "w" to get a random loudness adjustment
                 if key == 119:
-                    loudness_adjustment_trans, db_trans = random_loudnessad_justment(loudness_adjustment_trans,
+                    loudness_adjustment_trans, db_trans = random_loudnessad_justment(loudness_trans,
                                                                                      min_loudness_adjustment,
                                                                                      max_loudness_adjustment)
-                    loudness_adjustment_bin, db_bin = random_loudnessad_justment(loudness_adjustment_bin,
+                    loudness_adjustment_bin, db_bin = random_loudnessad_justment(loudness_bin,
                                                                                  min_loudness_adjustment,
                                                                                  max_loudness_adjustment)
                     client_misc.send_message(oscIdentifier_loudness, [loudness_trans + loudness_adjustment_trans,
@@ -382,9 +390,17 @@ def start_tracker():
                     roll) > max_roll_difference or current_position_before > 200 + max_distance_to_line or current_position_before < -max_distance_to_line or abs(
                     posX) > max_distance_to_line)
 
+            if pausePlayback_tracking != pausePlayback_tracking_before:
+                if pausePlayback_tracking:
+                    client_misc.send_message(oscIdentifier_loudness, [0.0, 0.0])
+                else:
+                    client_misc.send_message(oscIdentifier_loudness, [loudness_trans + loudness_adjustment_trans,
+                                                                      loudness_bin + loudness_adjustment_bin])
+                pausePlayback_tracking_before = copy.deepcopy(pausePlayback_tracking)
+
             if (pausePlayback_binsim or pausePlayback_tracking) != pausePlayback:
                 pausePlayback = (pausePlayback_binsim or pausePlayback_tracking)
-                client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
+                # client_misc.send_message(oscIdentifier_playback, [str(pausePlayback)])
 
             # Build and send OSC message
             # channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
@@ -417,19 +433,20 @@ def start_tracker():
             print(
                 f"z/x: {current_position} ({round(current_position_before)}) / {round(posX)}    "
                 f"y/r/p: {round(yaw)} ({round(yaw_before)}) / {round(roll)} / {round(pitch)}    "
-                f"vol: ({round(loudness_trans + loudness_adjustment_trans, 2)}|{round(loudness_bin + loudness_adjustment_bin, 2)})    "
-                f"vol_adjust: ({db_trans}|{db_bin})"
+                f"vol: ({round(loudness_trans + loudness_adjustment_trans, 3)}|{round(loudness_bin + loudness_adjustment_bin, 3)})  "
+                f"adjusted: ({db_trans} dB|{db_bin} dB)   "
                 f"Sound: {str(not pausePlayback)[0]} ({str(not pausePlayback_binsim)[0]}/{str(not pausePlayback_tracking)[0]})    "
                 f"audio: {audio_files[audio_index].split('/')[-1]}    "
-                f"HP: {HP_names[HP]}    "
-                f"state: {state}    "
-                f"F/S: {source_front}/{source_side}"
+                f"BRIR: {BRIRs[BRIR]}    "
+                f"use HP: {use_HP}    "
+                f"Front: {source_front}    "
+                f"Side: {source_side}"
             )
 
             # build OSC Message and send it
             for n in range(0, nSources):
                 # channel valueOne valueTwo ValueThree valueFour valueFive ValueSix
-                binsim_ds = [n, int(round(yaw)), 0, 0, current_position, 0, 0, 0, 0, 0, 0, 0, 0, 0, HP,
+                binsim_ds = [n, int(round(yaw)), 0, 0, current_position, 0, 0, 0, 0, 0, 0, 0, 0, 0, BRIR,
                              virtual_outchannel_bin[n]]
                 client_ds.send_message(oscIdentifier_ds, binsim_ds)
 

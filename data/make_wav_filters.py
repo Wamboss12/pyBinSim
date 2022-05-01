@@ -12,14 +12,14 @@ for room in rooms:
         print(" ->",speaker)
         for position in positions:
             print("    ->",position)
-            if not os.path.isdir(f"example/brirs/BRIR_{speaker}_{room}/{position}"):
-                os.mkdir(f"example/brirs/BRIR_{speaker}_{room}/{position}")
+            if not os.path.isdir(f"../example/brirs/BRIR_{speaker}_{room}/{position}"):
+                os.mkdir(f"../example/brirs/BRIR_{speaker}_{room}/{position}")
 
-            brirs = loadmat(f'example/brirs/BRIR_{speaker}_{room}/brirs{position}.mat')
+            brirs = loadmat(f'../example/brirs/BRIR_{speaker}_{room}/brirs{position}.mat')
 
             matrixes = brirs.get('brirMat')
             for angle in range(90):
                 # brir_0_links = matrixes[angle,0].T
                 # brir_0_rechts = matrixes[angle,1].T
                 brir = matrixes[angle].T
-                sf.write(f'example/brirs/BRIR_{speaker}_{room}/{position}/brir'+str(angle*4)+'.wav', brir, 48000)
+                sf.write(f'../example/brirs/BRIR_{speaker}_{room}/{position}/brir'+str(angle*4)+'.wav', brir, 48000, subtype="DOUBLE")
